@@ -1,0 +1,139 @@
+import numpy as np
+import requests
+import math
+from sklearn.utils import shuffle
+
+training_label_path = "https://raw.githubusercontent.com/Anusha-Kanagala/Machine-Learning---Neural-Networks-/master/Digit%20Interpretation/digitdata/traininglabels.txt"
+training_img_path = "https://raw.githubusercontent.com/Anusha-Kanagala/Machine-Learning---Neural-Networks-/master/Digit%20Interpretation/digitdata/trainingimages.txt"
+test_label_path = "https://raw.githubusercontent.com/Anusha-Kanagala/Machine-Learning---Neural-Networks-/master/Digit%20Interpretation/digitdata/testlabels.txt"
+test_img_path = "https://raw.githubusercontent.com/Anusha-Kanagala/Machine-Learning---Neural-Networks-/master/Digit%20Interpretation/digitdata/testimages.txt"
+training_label_data = np.loadtxt(training_label_path,dtype = object)
+training_data = requests.get(training_img_path)
+data_list = list(map(list,training_data.text.splitlines()))
+
+for i,j in enumerate(data_list):
+  for count, element in enumerate(j):
+      #print(element)
+      if ' ' in element:
+        data_list[i][count] = 0
+      if '+' in element:
+        data_list[i][count] = 1
+      if '#' in element:
+        data_list[i][count] = 1
+arr = np.array(data_list)
+training_images_input = np.vsplit(arr, 5000)
+training_images=np.array(training_images_input)
+
+training_images, training_label_data = shuffle(training_images, training_label_data)
+test_label_data = np.loadtxt(test_label_path,dtype = object)
+test_img_data = requests.get(test_img_path)
+test_data_list = list(map(list,test_img_data.text.splitlines()))
+for i,j in enumerate(test_data_list):
+  for count, element in enumerate(j):
+      if ' ' in element:
+        test_data_list[i][count] = 0
+      if '+' in element:
+        test_data_list[i][count] = 1
+      if '#' in element:
+        test_data_list[i][count] = 1
+arr1 = np.array(test_data_list)
+test_images_input = np.vsplit(arr1,1000)
+test_images=np.array(test_images_input)
+#print(test_images[0])
+
+
+# Fuction to get the total count of an element from the training label list
+training_label_count_dict ={}
+for i in training_label_data:
+  k=None
+  if i in training_label_count_dict:
+    k = training_label_count_dict[i] + 1
+  else: 
+    k = 1
+  training_label_count_dict[i] = k
+
+#print(training_label_count_dict)
+
+unique_training_label_list =[]
+
+#Function to get unique elements list from the training_label list
+for i in training_label_data:
+        # check if exists in unique_list or not
+        if i not in unique_training_label_list:
+            unique_training_label_list.append(i)
+
+prior_probability_dict ={}
+
+#Function to get prior probability of each class(0-9) and store it in a dictionary
+for i in unique_training_label_list:
+  count_i = count_label(training_label_data,i)
+  prior_probability_dict[i] = count_i/len(training_label_data)
+
+#print(prior_probability_dict)
+
+#calculate likelihood
+# training 
+# Calculate zeros for each class image at each pixel position
+dict_zero_count_matrix ={}
+k =0
+for i in training_images:
+  x = None
+  if training_label_data[k] in dict_zero_count_matrix:
+    x = dict_zero_count_matrix[training_label_data[k]]
+  else:
+    x = np.zeros((28,28), dtype=int)
+
+  for ix,iy in np.ndindex(i.shape):
+      if i[ix,iy]== 0 :
+        x[ix,iy] = x[ix,iy] + 1
+  dict_zero_count_matrix[training_label_data[k]] = x
+  k = k + 1
+# use laplace constant lc and calculate feature probabilities at each position
+dict_mat_zero_prob ={}
+dict_mat_one_prob ={}
+lc = 1
+
+for k,v in dict_zero_count_matrix.items():
+  mat_zero_probability = np.zeros((28,28))
+  mat_one_probability = np.zeros((28,28))
+  count = training_label_count_dict[k]
+  for ix,iy in np.ndindex(v.shape):
+    mat_zero_probability[ix,iy] =  (lc + v[ix,iy]) / ((2* lc) + count) 
+    mat_one_probability[ix,iy] = (count - v[ix,iy] + lc )/ ((2 * lc) + count)
+  dict_mat_zero_prob[k] = mat_zero_probability
+  dict_mat_one_prob[k] = mat_one_probability
+
+
+
+
+
+
+# Classification
+dict_post_probability = {}
+cnt = 0
+predictions=[]
+for image in test_images:
+  class_probability = {}
+  for cls in range(0,10):
+    val = 0
+    for ix,iy in np.ndindex(image.shape):
+      if image[ix][iy] == 0: 
+        val += math.log(dict_mat_zero_prob[str(cls)][ix,iy])
+      else:
+        val += math.log(dict_mat_one_prob[str(cls)][ix,iy])
+    val += math.log(prior_probability_dict[str(cls)])
+    dict_post_probability[cls] = val
+    max = -999999
+    predict = None
+  for k,v in dict_post_probability.items():
+    if v > max:
+        max = v
+        predict = k
+  predictions.append(str(predict))
+  #print("Index: " + str(cnt) +" Actual Value : " + str(predict) + "Expected Value : " + str(test_label_data[cnt]))
+  cnt = cnt + 1
+
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import accuracy_score
+confusion_matrix(test_label_data, predictions )
+accuracy_score(test_label_data, predictions)
